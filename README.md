@@ -9,7 +9,8 @@ GitHub APIを使用してチームの開発スループットデータを収集�
 - コミット数の集計
 - イシュー統計（作成・クローズ数）
 - 貢献者数の計算
-- JSON/TSV形式での結果出力
+- **個人別メトリクス集計**（PR作成・マージ数、コミット数、イシュー解決数）
+- JSON/TSV形式での結果出力（個人別TSVも含む）
 
 ## 前提条件
 
@@ -31,8 +32,44 @@ GitHub APIを使用してチームの開発スループットデータを収集�
 ### 2. スクリプトの実行権限設定
 
 ```bash
-chmod +x github_metrics_poc.rb
+chmod +x github_metrics.rb
 ```
+
+## メトリクス算出方法
+
+### 収集対象期間
+- `--days`オプションで指定した日数分（デフォルト: 30日間）
+- 基準日: 実行日からさかのぼって計算
+
+### プルリクエスト数
+- **対象**: 指定期間内に**作成**されたプルリクエスト
+- **算出方法**: GitHub API `/repos/{org}/{repo}/pulls` で `created_at` が期間内のPRを取得
+- **状態**: 全ての状態（open, closed, merged）を含む
+- **注意**: PRの更新日ではなく作成日で判定
+
+### マージ済みPR数  
+- **対象**: 上記で取得したPRのうち、`merged_at` フィールドが存在するもの
+- **算出方法**: `merged_at` が `null` でないPRをカウント
+- **注意**: 期間外にマージされたPRも、期間内に作成されていれば含まれる
+
+### コミット数
+- **対象**: 指定期間内に**コミット**されたコミット
+- **算出方法**: GitHub API `/repos/{org}/{repo}/commits` で `since` パラメータを使用
+- **基準**: コミット日時（`commit.committer.date`）
+- **注意**: マージコミットも含む
+
+### クローズ済みイシュー数
+- **対象**: 指定期間内に**作成**されたイシューのうち、`state` が `closed` のもの
+- **算出方法**: GitHub API `/repos/{org}/{repo}/issues` で `created_at` が期間内かつ `state: closed`
+- **除外**: プルリクエスト（GitHubではPRもissueとして扱われるため）
+- **注意**: イシューのクローズ日ではなく作成日で判定
+
+### 個人別メトリクス
+- **PR作成数**: 各ユーザーが作成したPR数（`user.login` 基準）
+- **PRマージ数**: 各ユーザーが作成したPRのうちマージされた数
+- **コミット数**: 各ユーザーのコミット数（`author.login` 基準）
+- **イシュー解決数**: 各ユーザーがアサインされたまたは作成したクローズ済みイシュー数
+- **貢献度ソート**: PR作成×3 + PRマージ×5 + コミット×1 + イシュー解決×2 の重み付きスコア
 
 ## 使用方法
 
@@ -40,10 +77,10 @@ chmod +x github_metrics_poc.rb
 
 ```bash
 # 組織全体のデータを収集
-ruby github_metrics_poc.rb --token YOUR_GITHUB_TOKEN --org YOUR_ORGANIZATION
+ruby github_metrics.rb --token YOUR_GITHUB_TOKEN --org YOUR_ORGANIZATION
 
 # 特定のリポジトリのみ収集（高速）
-ruby github_metrics_poc.rb --token YOUR_GITHUB_TOKEN --org YOUR_ORGANIZATION --repo REPOSITORY_NAME
+ruby github_metrics.rb --token YOUR_GITHUB_TOKEN --org YOUR_ORGANIZATION --repo REPOSITORY_NAME
 ```
 
 ### オプション
@@ -61,16 +98,16 @@ ruby github_metrics_poc.rb --token YOUR_GITHUB_TOKEN --org YOUR_ORGANIZATION --r
 
 ```bash
 # 組織全体の過去30日間のデータをJSON・TSV両方で出力
-ruby github_metrics_poc.rb --token ghp_xxxxxxxxxxxx --org your-company
+ruby github_metrics.rb --token ghp_xxxxxxxxxxxx --org your-company
 
 # 特定のリポジトリのみ収集（処理時間短縮）
-ruby github_metrics_poc.rb --token ghp_xxxxxxxxxxxx --org your-company --repo important-project
+ruby github_metrics.rb --token ghp_xxxxxxxxxxxx --org your-company --repo important-project
 
 # 過去7日間のデータをJSONのみで出力
-ruby github_metrics_poc.rb --token ghp_xxxxxxxxxxxx --org your-company --repo my-repo --days 7 --format json
+ruby github_metrics.rb --token ghp_xxxxxxxxxxxx --org your-company --repo my-repo --days 7 --format json
 
 # カスタムファイル名で出力
-ruby github_metrics_poc.rb --token ghp_xxxxxxxxxxxx --org your-company --repo api-server --output backend_metrics
+ruby github_metrics.rb --token ghp_xxxxxxxxxxxx --org your-company --repo api-server --output backend_metrics
 ```
 
 ## 出力ファイル
