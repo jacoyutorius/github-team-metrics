@@ -207,19 +207,31 @@ class GitHubMetricsCollector
   def get_pull_requests(repo, since_date)
     prs = []
     page = 1
+    target_date = Date.parse(since_date)
     
     loop do
       data = api_request("/repos/#{@org}/#{repo}/pulls", {
         state: 'all',
-        since: since_date,
-        sort: 'updated',
+        sort: 'created',
         direction: 'desc',
         page: page,
         per_page: 100
       })
       break if data.empty?
       
-      prs.concat(data)
+      # 作成日でフィルタリング
+      filtered_data = data.select do |pr|
+        created_date = Date.parse(pr['created_at'])
+        created_date >= target_date
+      end
+      
+      prs.concat(filtered_data)
+      
+      # 最後のPRの作成日が期間外になったら終了
+      if data.last && Date.parse(data.last['created_at']) < target_date
+        break
+      end
+      
       page += 1
     end
     
@@ -248,18 +260,32 @@ class GitHubMetricsCollector
   def get_issues(repo, since_date)
     issues = []
     page = 1
+    target_date = Date.parse(since_date)
     
     loop do
       data = api_request("/repos/#{@org}/#{repo}/issues", {
         state: 'all',
-        since: since_date,
+        sort: 'created',
+        direction: 'desc',
         page: page,
         per_page: 100
       })
       break if data.empty?
       
-      # プルリクエストを除外（GitHubではPRもissueとして扱われる）
-      issues.concat(data.reject { |issue| issue.key?('pull_request') })
+      # プルリクエストを除外し、作成日でフィルタリング
+      filtered_data = data.reject { |issue| issue.key?('pull_request') }.select do |issue|
+        created_date = Date.parse(issue['created_at'])
+        created_date >= target_date
+      end
+      
+      issues.concat(filtered_data)
+      
+      # 最後のイシューの作成日が期間外になったら終了
+      last_issue = data.reject { |issue| issue.key?('pull_request') }.last
+      if last_issue && Date.parse(last_issue['created_at']) < target_date
+        break
+      end
+      
       page += 1
     end
     
