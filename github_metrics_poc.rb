@@ -8,9 +8,10 @@ require 'date'
 require 'uri'
 
 class GitHubMetricsCollector
-  def initialize(token, org)
+  def initialize(token, org, repo = nil)
     @token = token
     @org = org
+    @repo = repo
     @base_url = 'https://api.github.com'
     @headers = {
       'Authorization' => "token #{@token}",
@@ -24,15 +25,21 @@ class GitHubMetricsCollector
     
     puts "GitHub チームメトリクスを収集中..."
     puts "期間: 過去 #{days} 日間"
-    puts "組織: #{@org}"
     
-    repos = get_repositories
-    puts "リポジトリ数: #{repos.length}"
+    if @repo
+      puts "リポジトリ: #{@org}/#{@repo}"
+      repos = [{'name' => @repo}]
+    else
+      puts "組織: #{@org}"
+      repos = get_repositories
+      puts "リポジトリ数: #{repos.length}"
+    end
     
     metrics = {
       'period' => "#{days}日間",
       'collected_at' => Time.now.iso8601,
       'organization' => @org,
+      'repository' => @repo,
       'summary' => {
         'total_repositories' => repos.length,
         'total_pull_requests' => 0,
@@ -248,6 +255,10 @@ def main
       options[:org] = org
     end
     
+    opts.on('--repo REPOSITORY', '特定のリポジトリ名（指定しない場合は組織全体）') do |repo|
+      options[:repo] = repo
+    end
+    
     opts.on('--days DAYS', Integer, '収集期間（日数、デフォルト: 30）') do |days|
       options[:days] = days
     end
@@ -279,7 +290,7 @@ def main
   options[:output] ||= 'metrics'
   
   begin
-    collector = GitHubMetricsCollector.new(options[:token], options[:org])
+    collector = GitHubMetricsCollector.new(options[:token], options[:org], options[:repo])
     metrics = collector.collect_metrics(options[:days])
     
     timestamp = Time.now.strftime('%Y%m%d_%H%M%S')

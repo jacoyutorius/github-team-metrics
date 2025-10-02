@@ -1,0 +1,38 @@
+{
+  "period": "30日間",
+  "collected_at": "2025-10-02T23:29:50+09:00",
+  "organization": "crassone",
+  "repository": "compal",
+  "summary": {
+    "total_repositories": 1,
+    "total_pull_requests": 1875,
+    "merged_pull_requests": 1704,
+    "total_commits": 427,
+    "closed_issues": 12,
+    "unique_contributors": 12
+  },
+  "repositories": [
+    {
+      "name": "compal",
+      "pull_requests": 1875,
+      "merged_prs": 1704,
+      "commits": 427,
+      "closed_issues": 12,
+      "contributors": [
+        "machiren",
+        "nagamoto",
+        "jacoyutorius",
+        "yyoshida-crassone",
+        "tahara-pg",
+        "dependabot[bot]",
+        "nyagato-00",
+        "kei-f",
+        "moegi29",
+        "suezawas",
+        "devin-ai-integration[bot]",
+        "actions-user"
+      ],
+      "contributor_count": 12
+    }
+  ]
+}

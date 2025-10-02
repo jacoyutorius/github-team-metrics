@@ -39,7 +39,11 @@ chmod +x github_metrics_poc.rb
 ### 基本的な使用方法
 
 ```bash
+# 組織全体のデータを収集
 ruby github_metrics_poc.rb --token YOUR_GITHUB_TOKEN --org YOUR_ORGANIZATION
+
+# 特定のリポジトリのみ収集（高速）
+ruby github_metrics_poc.rb --token YOUR_GITHUB_TOKEN --org YOUR_ORGANIZATION --repo REPOSITORY_NAME
 ```
 
 ### オプション
@@ -48,6 +52,7 @@ ruby github_metrics_poc.rb --token YOUR_GITHUB_TOKEN --org YOUR_ORGANIZATION
 |------------|------|--------------|
 | `--token` | GitHub Personal Access Token（必須） | - |
 | `--org` | 組織名（必須） | - |
+| `--repo` | 特定のリポジトリ名（指定しない場合は組織全体） | - |
 | `--days` | 収集期間（日数） | 30 |
 | `--format` | 出力形式（json/tsv/both） | both |
 | `--output` | 出力ファイル名のプレフィックス | metrics |
@@ -55,14 +60,17 @@ ruby github_metrics_poc.rb --token YOUR_GITHUB_TOKEN --org YOUR_ORGANIZATION
 ### 使用例
 
 ```bash
-# 過去30日間のデータをJSON・TSV両方で出力
+# 組織全体の過去30日間のデータをJSON・TSV両方で出力
 ruby github_metrics_poc.rb --token ghp_xxxxxxxxxxxx --org your-company
 
+# 特定のリポジトリのみ収集（処理時間短縮）
+ruby github_metrics_poc.rb --token ghp_xxxxxxxxxxxx --org your-company --repo important-project
+
 # 過去7日間のデータをJSONのみで出力
-ruby github_metrics_poc.rb --token ghp_xxxxxxxxxxxx --org your-company --days 7 --format json
+ruby github_metrics_poc.rb --token ghp_xxxxxxxxxxxx --org your-company --repo my-repo --days 7 --format json
 
 # カスタムファイル名で出力
-ruby github_metrics_poc.rb --token ghp_xxxxxxxxxxxx --org your-company --output team_report
+ruby github_metrics_poc.rb --token ghp_xxxxxxxxxxxx --org your-company --repo api-server --output backend_metrics
 ```
 
 ## 出力ファイル
