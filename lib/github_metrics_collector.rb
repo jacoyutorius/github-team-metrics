@@ -1,11 +1,8 @@
-#!/usr/bin/env ruby
-
 require 'net/http'
 require 'json'
-require 'csv'
-require 'optparse'
 require 'date'
 require 'uri'
+require 'set'
 
 class GitHubMetricsCollector
   def initialize(token, org, repo = nil)
@@ -122,7 +119,6 @@ class GitHubMetricsCollector
       puts " 完了"
       puts "  → PR: #{prs.length}件, コミット: #{commits.length}件, イシュー: #{issues.length}件"
       
-      
       # 貢献者を収集（後方互換性のため）
       contributors = Set.new
       prs.each { |pr| contributors.add(pr['user']['login']) if pr['user'] }
@@ -153,6 +149,17 @@ class GitHubMetricsCollector
     
     # 全体の貢献者数を更新
     metrics['summary']['unique_contributors'] = metrics['summary']['unique_contributors'].length
+    
+    puts "\n\n=== 収集結果サマリー ==="
+    puts "期間: #{metrics['period']}"
+    puts "総 API呼び出し回数: #{@api_call_count}回"
+    puts "リポジトリ数: #{metrics['summary']['total_repositories']}"
+    puts "プルリクエスト総数: #{metrics['summary']['total_pull_requests']}"
+    puts "マージ済みPR数: #{metrics['summary']['merged_pull_requests']}"
+    puts "コミット総数: #{metrics['summary']['total_commits']}"
+    puts "クローズ済みイシュー数: #{metrics['summary']['closed_issues']}"
+    puts "貢献者数: #{metrics['summary']['unique_contributors']}"
+    puts "個人別メトリクス: #{metrics['personal_metrics'].length}人"
     
     metrics
   end
@@ -291,169 +298,4 @@ class GitHubMetricsCollector
     
     issues
   end
-  
-end
-
-class MetricsExporter
-  def self.export_json(metrics, filename)
-    File.open(filename, 'w') do |file|
-      file.write(JSON.pretty_generate(metrics))
-    end
-    puts "JSONファイルを保存しました: #{filename}"
-  end
-
-  def self.export_tsv(metrics, filename)
-    CSV.open(filename, 'w', col_sep: "\t") do |csv|
-      # ヘッダー行
-      csv << [
-        'リポジトリ名', 'プルリクエスト数', 'マージ済みPR数', 
-        'コミット数', 'クローズ済みイシュー数', '貢献者数'
-      ]
-      
-      # データ行
-      metrics['repositories'].each do |repo|
-        csv << [
-          repo['name'],
-          repo['pull_requests'],
-          repo['merged_prs'],
-          repo['commits'],
-          repo['closed_issues'],
-          repo['contributor_count']
-        ]
-      end
-      
-      # サマリー行
-      csv << ['---', '---', '---', '---', '---', '---']
-      csv << [
-        '合計',
-        metrics['summary']['total_pull_requests'],
-        metrics['summary']['merged_pull_requests'],
-        metrics['summary']['total_commits'],
-        metrics['summary']['closed_issues'],
-        metrics['summary']['unique_contributors']
-      ]
-    end
-    puts "TSVファイルを保存しました: #{filename}"
-  end
-  
-  def self.export_personal_tsv(metrics, filename)
-    CSV.open(filename, 'w', col_sep: "\t") do |csv|
-      # ヘッダー行
-      csv << [
-        'ユーザー名', 'PR作成数', 'PRマージ数', 'コミット数', 
-        'イシュー解決数', '対象リポジトリ数', '活動リポジトリ'
-      ]
-      
-      # 個人別データを貢献度順でソート
-      sorted_users = metrics['personal_metrics'].sort_by do |user, data|
-        # 総貢献度を計算（重み付き）
-        -(data['pull_requests_created'] * 3 + 
-          data['pull_requests_merged'] * 5 + 
-          data['commits'] * 1 + 
-          data['issues_closed'] * 2)
-      end
-      
-      # データ行
-      sorted_users.each do |user, data|
-        csv << [
-          user,
-          data['pull_requests_created'],
-          data['pull_requests_merged'],
-          data['commits'],
-          data['issues_closed'],
-          data['repositories'].length,
-          data['repositories'].join(', ')
-        ]
-      end
-    end
-    puts "個人別TSVファイルを保存しました: #{filename}"
-  end
-end
-
-# メイン処理
-def main
-  options = {}
-  
-  OptionParser.new do |opts|
-    opts.banner = "使用方法: #{$0} [オプション]"
-    
-    opts.on('--token TOKEN', 'GitHub Personal Access Token（必須）') do |token|
-      options[:token] = token
-    end
-    
-    opts.on('--org ORGANIZATION', '組織名（必須）') do |org|
-      options[:org] = org
-    end
-    
-    opts.on('--repo REPOSITORY', '特定のリポジトリ名（指定しない場合は組織全体）') do |repo|
-      options[:repo] = repo
-    end
-    
-    opts.on('--days DAYS', Integer, '収集期間（日数、デフォルト: 30）') do |days|
-      options[:days] = days
-    end
-    
-    opts.on('--format FORMAT', ['json', 'tsv', 'both'], '出力形式（json/tsv/both、デフォルト: both）') do |format|
-      options[:format] = format
-    end
-    
-    opts.on('--output PREFIX', '出力ファイル名のプレフィックス（デフォルト: metrics）') do |output|
-      options[:output] = output
-    end
-    
-    opts.on('-h', '--help', 'ヘルプを表示') do
-      puts opts
-      exit
-    end
-  end.parse!
-  
-  # 必須パラメータのチェック
-  unless options[:token] && options[:org]
-    puts "エラー: --token と --org は必須です"
-    puts "使用例: #{$0} --token YOUR_TOKEN --org YOUR_ORG"
-    exit 1
-  end
-  
-  # デフォルト値設定
-  options[:days] ||= 30
-  options[:format] ||= 'both'
-  options[:output] ||= 'metrics'
-  
-  begin
-    collector = GitHubMetricsCollector.new(options[:token], options[:org], options[:repo])
-    metrics = collector.collect_metrics(options[:days])
-    
-    timestamp = Time.now.strftime('%Y%m%d_%H%M%S')
-    
-    case options[:format]
-    when 'json'
-      MetricsExporter.export_json(metrics, "#{options[:output]}_#{timestamp}.json")
-    when 'tsv'
-      MetricsExporter.export_tsv(metrics, "#{options[:output]}_#{timestamp}.tsv")
-      MetricsExporter.export_personal_tsv(metrics, "#{options[:output]}_personal_#{timestamp}.tsv")
-    when 'both'
-      MetricsExporter.export_json(metrics, "#{options[:output]}_#{timestamp}.json")
-      MetricsExporter.export_tsv(metrics, "#{options[:output]}_#{timestamp}.tsv")
-      MetricsExporter.export_personal_tsv(metrics, "#{options[:output]}_personal_#{timestamp}.tsv")
-    end
-    
-    puts "\n\n=== 収集結果サマリー ==="
-    puts "期間: #{metrics['period']}"
-    puts "総 API呼び出し回数: #{@api_call_count}回"
-    puts "リポジトリ数: #{metrics['summary']['total_repositories']}"
-    puts "プルリクエスト総数: #{metrics['summary']['total_pull_requests']}"
-    puts "マージ済みPR数: #{metrics['summary']['merged_pull_requests']}"
-    puts "コミット総数: #{metrics['summary']['total_commits']}"
-    puts "クローズ済みイシュー数: #{metrics['summary']['closed_issues']}"
-    puts "貢献者数: #{metrics['summary']['unique_contributors']}"
-    puts "個人別メトリクス: #{metrics['personal_metrics'].length}人"
-    
-  rescue => e
-    puts "エラーが発生しました: #{e.message}"
-    exit 1
-  end
-end
-
-if __FILE__ == $0
-  main
 end
