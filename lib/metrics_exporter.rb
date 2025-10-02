@@ -1,22 +1,22 @@
+# frozen_string_literal: true
+
 require 'json'
 require 'csv'
 
 class MetricsExporter
   def self.export_json(metrics, filename)
-    File.open(filename, 'w') do |file|
-      file.write(JSON.pretty_generate(metrics))
-    end
+    File.write(filename, JSON.pretty_generate(metrics))
     puts "JSONファイルを保存しました: #{filename}"
   end
 
   def self.export_tsv(metrics, filename)
     CSV.open(filename, 'w', col_sep: "\t") do |csv|
       # ヘッダー行
-      csv << [
-        'リポジトリ名', 'プルリクエスト数', 'マージ済みPR数', 
-        'コミット数', 'クローズ済みイシュー数', '貢献者数'
+      csv << %w[
+        リポジトリ名 プルリクエスト数 マージ済みPR数
+        コミット数 クローズ済みイシュー数 貢献者数
       ]
-      
+
       # データ行
       metrics['repositories'].each do |repo|
         csv << [
@@ -28,7 +28,7 @@ class MetricsExporter
           repo['contributor_count']
         ]
       end
-      
+
       # サマリー行
       csv << ['---', '---', '---', '---', '---', '---']
       csv << [
@@ -42,26 +42,26 @@ class MetricsExporter
     end
     puts "TSVファイルを保存しました: #{filename}"
   end
-  
+
   def self.export_personal_tsv(metrics, filename)
     CSV.open(filename, 'w', col_sep: "\t") do |csv|
       # ヘッダー行
-      csv << [
-        'ユーザー名', 'PR作成数', 'PRマージ数', 'コミット数', 
-        'イシュー解決数', 'PRコメント数', 'レビューコメント数', '対象リポジトリ数', '活動リポジトリ'
+      csv << %w[
+        ユーザー名 PR作成数 PRマージ数 コミット数
+        イシュー解決数 PRコメント数 レビューコメント数 対象リポジトリ数 活動リポジトリ
       ]
-      
+
       # 個人別データを貢献度順でソート
-      sorted_users = metrics['personal_metrics'].sort_by do |user, data|
+      sorted_users = metrics['personal_metrics'].sort_by do |_user, data|
         # 総貢献度を計算（重み付き）
-        -(data['pull_requests_created'] * 3 + 
-          data['pull_requests_merged'] * 5 + 
-          data['commits'] * 1 + 
-          data['issues_closed'] * 2 + 
-          data['pr_comments'] * 1 + 
-          data['review_comments'] * 2)
+        -((data['pull_requests_created'] * 3) +
+          (data['pull_requests_merged'] * 5) +
+          (data['commits'] * 1) +
+          (data['issues_closed'] * 2) +
+          (data['pr_comments'] * 1) +
+          (data['review_comments'] * 2))
       end
-      
+
       # データ行
       sorted_users.each do |user, data|
         csv << [
