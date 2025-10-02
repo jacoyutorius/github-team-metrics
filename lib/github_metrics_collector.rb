@@ -55,6 +55,8 @@ class GitHubMetricsCollector
       'pull_requests_merged' => 0,
       'commits' => 0,
       'issues_closed' => 0,
+      'pr_comments' => 0,
+      'review_comments' => 0,
       'repositories' => Set.new
     }}
     
@@ -75,6 +77,11 @@ class GitHubMetricsCollector
       print "  イシュー情報を取得中..."
       issues = get_issues(repo_name, since_date)
       puts " #{issues.length}件 (API呼び出し: #{@api_call_count}回)"
+      
+      print "  コメント情報を取得中..."
+      pr_comments = get_pr_comments(repo_name, prs)
+      review_comments = get_review_comments(repo_name, prs)
+      puts " PR: #{pr_comments.length}件, レビュー: #{review_comments.length}件 (API呼び出し: #{@api_call_count}回)"
       
       merged_prs = prs.select { |pr| pr['merged_at'] }
       closed_issues = issues.select { |issue| issue['state'] == 'closed' }
@@ -116,8 +123,25 @@ class GitHubMetricsCollector
         end
       end
       
+      # 個人別コメント統計
+      pr_comments.each do |comment|
+        if comment['user'] && comment['user']['login']
+          user = comment['user']['login']
+          personal_metrics[user]['pr_comments'] += 1
+          personal_metrics[user]['repositories'].add(repo_name)
+        end
+      end
+      
+      review_comments.each do |comment|
+        if comment['user'] && comment['user']['login']
+          user = comment['user']['login']
+          personal_metrics[user]['review_comments'] += 1
+          personal_metrics[user]['repositories'].add(repo_name)
+        end
+      end
+      
       puts " 完了"
-      puts "  → PR: #{prs.length}件, コミット: #{commits.length}件, イシュー: #{issues.length}件"
+      puts "  → PR: #{prs.length}件, コミット: #{commits.length}件, イシュー: #{issues.length}件, コメント: #{pr_comments.length + review_comments.length}件"
       
       # 貢献者を収集（後方互換性のため）
       contributors = Set.new
@@ -297,5 +321,61 @@ class GitHubMetricsCollector
     end
     
     issues
+  end
+  
+  def get_pr_comments(repo, prs)
+    comments = []
+    
+    prs.each do |pr|
+      pr_number = pr['number']
+      page = 1
+      
+      # PR本体のコメントを取得
+      loop do
+        begin
+          data = api_request("/repos/#{@org}/#{repo}/issues/#{pr_number}/comments", {
+            page: page,
+            per_page: 100
+          })
+          break if data.empty?
+          
+          comments.concat(data)
+          page += 1
+        rescue => e
+          # エラー時はスキップ
+          break
+        end
+      end
+    end
+    
+    comments
+  end
+  
+  def get_review_comments(repo, prs)
+    comments = []
+    
+    prs.each do |pr|
+      pr_number = pr['number']
+      page = 1
+      
+      # PRのレビューコメントを取得
+      loop do
+        begin
+          data = api_request("/repos/#{@org}/#{repo}/pulls/#{pr_number}/comments", {
+            page: page,
+            per_page: 100
+          })
+          break if data.empty?
+          
+          comments.concat(data)
+          page += 1
+        rescue => e
+          # エラー時はスキップ
+          break
+        end
+      end
+    end
+    
+    comments
   end
 end

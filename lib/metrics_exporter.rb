@@ -48,7 +48,7 @@ class MetricsExporter
       # ヘッダー行
       csv << [
         'ユーザー名', 'PR作成数', 'PRマージ数', 'コミット数', 
-        'イシュー解決数', '対象リポジトリ数', '活動リポジトリ'
+        'イシュー解決数', 'PRコメント数', 'レビューコメント数', '対象リポジトリ数', '活動リポジトリ'
       ]
       
       # 個人別データを貢献度順でソート
@@ -57,7 +57,9 @@ class MetricsExporter
         -(data['pull_requests_created'] * 3 + 
           data['pull_requests_merged'] * 5 + 
           data['commits'] * 1 + 
-          data['issues_closed'] * 2)
+          data['issues_closed'] * 2 + 
+          data['pr_comments'] * 1 + 
+          data['review_comments'] * 2)
       end
       
       # データ行
@@ -68,6 +70,8 @@ class MetricsExporter
           data['pull_requests_merged'],
           data['commits'],
           data['issues_closed'],
+          data['pr_comments'],
+          data['review_comments'],
           data['repositories'].length,
           data['repositories'].join(', ')
         ]
