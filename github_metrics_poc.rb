@@ -18,6 +18,7 @@ class GitHubMetricsCollector
       'Accept' => 'application/vnd.github.v3+json',
       'User-Agent' => 'GitHubMetricsCollector/1.0'
     }
+    @api_call_count = 0
   end
 
   def collect_metrics(days = 30)
@@ -51,18 +52,78 @@ class GitHubMetricsCollector
       'repositories' => []
     }
     
+    # 個人別メトリクスを収集
+    personal_metrics = Hash.new { |h, k| h[k] = {
+      'pull_requests_created' => 0,
+      'pull_requests_merged' => 0,
+      'commits' => 0,
+      'issues_closed' => 0,
+      'repositories' => Set.new
+    }}
+    
     repos.each_with_index do |repo, index|
       repo_name = repo['name']
-      puts "処理中 (#{index + 1}/#{repos.length}): #{repo_name}"
+      progress = ((index + 1).to_f / repos.length * 100).round(1)
+      puts "\n=== 処理中 (#{index + 1}/#{repos.length}, #{progress}%) ===" 
+      puts "リポジトリ: #{repo_name}"
       
+      print "  PR情報を取得中..."
       prs = get_pull_requests(repo_name, since_date)
+      puts " #{prs.length}件 (API呼び出し: #{@api_call_count}回)"
+      
+      print "  コミット情報を取得中..."
       commits = get_commits(repo_name, since_date)
+      puts " #{commits.length}件 (API呼び出し: #{@api_call_count}回)"
+      
+      print "  イシュー情報を取得中..."
       issues = get_issues(repo_name, since_date)
+      puts " #{issues.length}件 (API呼び出し: #{@api_call_count}回)"
       
       merged_prs = prs.select { |pr| pr['merged_at'] }
       closed_issues = issues.select { |issue| issue['state'] == 'closed' }
       
-      # 貢献者を収集
+      print "  個人別メトリクスを集計中..."
+      
+      # 個人別PR統計
+      prs.each do |pr|
+        if pr['user'] && pr['user']['login']
+          user = pr['user']['login']
+          personal_metrics[user]['pull_requests_created'] += 1
+          personal_metrics[user]['repositories'].add(repo_name)
+          
+          if pr['merged_at']
+            personal_metrics[user]['pull_requests_merged'] += 1
+          end
+        end
+      end
+      
+      # 個人別コミット統計
+      commits.each do |commit|
+        if commit['author'] && commit['author']['login']
+          user = commit['author']['login']
+          personal_metrics[user]['commits'] += 1
+          personal_metrics[user]['repositories'].add(repo_name)
+        end
+      end
+      
+      # 個人別イシュー統計
+      closed_issues.each do |issue|
+        if issue['assignee'] && issue['assignee']['login']
+          user = issue['assignee']['login']
+          personal_metrics[user]['issues_closed'] += 1
+          personal_metrics[user]['repositories'].add(repo_name)
+        elsif issue['user'] && issue['user']['login'] && issue['state'] == 'closed'
+          user = issue['user']['login']
+          personal_metrics[user]['issues_closed'] += 1
+          personal_metrics[user]['repositories'].add(repo_name)
+        end
+      end
+      
+      puts " 完了"
+      puts "  → PR: #{prs.length}件, コミット: #{commits.length}件, イシュー: #{issues.length}件"
+      
+      
+      # 貢献者を収集（後方互換性のため）
       contributors = Set.new
       prs.each { |pr| contributors.add(pr['user']['login']) if pr['user'] }
       commits.each { |commit| contributors.add(commit['author']['login']) if commit['author'] }
@@ -85,6 +146,11 @@ class GitHubMetricsCollector
       metrics['summary']['unique_contributors'].merge(contributors)
     end
     
+    # 個人別メトリクスをメトリクスに追加
+    metrics['personal_metrics'] = personal_metrics.transform_values do |user_data|
+      user_data.merge('repositories' => user_data['repositories'].to_a)
+    end
+    
     # 全体の貢献者数を更新
     metrics['summary']['unique_contributors'] = metrics['summary']['unique_contributors'].length
     
@@ -94,6 +160,8 @@ class GitHubMetricsCollector
   private
 
   def api_request(path, params = {})
+    @api_call_count += 1
+    
     uri = URI("#{@base_url}#{path}")
     uri.query = URI.encode_www_form(params) unless params.empty?
     
@@ -120,6 +188,7 @@ class GitHubMetricsCollector
   end
 
   def get_repositories
+    puts "組織のリポジトリ一覧を取得中..."
     repos = []
     page = 1
     
@@ -128,6 +197,7 @@ class GitHubMetricsCollector
       break if data.empty?
       
       repos.concat(data)
+      puts "  ページ #{page}: #{data.length}件取得 (累計: #{repos.length}件)"
       page += 1
     end
     
@@ -195,6 +265,7 @@ class GitHubMetricsCollector
     
     issues
   end
+  
 end
 
 class MetricsExporter
@@ -237,6 +308,39 @@ class MetricsExporter
       ]
     end
     puts "TSVファイルを保存しました: #{filename}"
+  end
+  
+  def self.export_personal_tsv(metrics, filename)
+    CSV.open(filename, 'w', col_sep: "\t") do |csv|
+      # ヘッダー行
+      csv << [
+        'ユーザー名', 'PR作成数', 'PRマージ数', 'コミット数', 
+        'イシュー解決数', '対象リポジトリ数', '活動リポジトリ'
+      ]
+      
+      # 個人別データを貢献度順でソート
+      sorted_users = metrics['personal_metrics'].sort_by do |user, data|
+        # 総貢献度を計算（重み付き）
+        -(data['pull_requests_created'] * 3 + 
+          data['pull_requests_merged'] * 5 + 
+          data['commits'] * 1 + 
+          data['issues_closed'] * 2)
+      end
+      
+      # データ行
+      sorted_users.each do |user, data|
+        csv << [
+          user,
+          data['pull_requests_created'],
+          data['pull_requests_merged'],
+          data['commits'],
+          data['issues_closed'],
+          data['repositories'].length,
+          data['repositories'].join(', ')
+        ]
+      end
+    end
+    puts "個人別TSVファイルを保存しました: #{filename}"
   end
 end
 
@@ -300,19 +404,23 @@ def main
       MetricsExporter.export_json(metrics, "#{options[:output]}_#{timestamp}.json")
     when 'tsv'
       MetricsExporter.export_tsv(metrics, "#{options[:output]}_#{timestamp}.tsv")
+      MetricsExporter.export_personal_tsv(metrics, "#{options[:output]}_personal_#{timestamp}.tsv")
     when 'both'
       MetricsExporter.export_json(metrics, "#{options[:output]}_#{timestamp}.json")
       MetricsExporter.export_tsv(metrics, "#{options[:output]}_#{timestamp}.tsv")
+      MetricsExporter.export_personal_tsv(metrics, "#{options[:output]}_personal_#{timestamp}.tsv")
     end
     
-    puts "\n=== 収集結果サマリー ==="
+    puts "\n\n=== 収集結果サマリー ==="
     puts "期間: #{metrics['period']}"
+    puts "総 API呼び出し回数: #{@api_call_count}回"
     puts "リポジトリ数: #{metrics['summary']['total_repositories']}"
     puts "プルリクエスト総数: #{metrics['summary']['total_pull_requests']}"
     puts "マージ済みPR数: #{metrics['summary']['merged_pull_requests']}"
     puts "コミット総数: #{metrics['summary']['total_commits']}"
     puts "クローズ済みイシュー数: #{metrics['summary']['closed_issues']}"
     puts "貢献者数: #{metrics['summary']['unique_contributors']}"
+    puts "個人別メトリクス: #{metrics['personal_metrics'].length}人"
     
   rescue => e
     puts "エラーが発生しました: #{e.message}"
