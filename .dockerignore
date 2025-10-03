@@ -1,0 +1,35 @@
+# Git
+.git
+.gitignore
+
+# Ruby
+*.gem
+*.rbc
+.bundle
+vendor/bundle
+
+# Node
+node_modules
+npm-debug.log*
+metrics-viewer/node_modules
+metrics-viewer/dist
+
+# Output files
+*.json
+*.tsv
+output/
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+.DS_Store
+
+# Documentation
+*.md
+!README.md
+
+# Other
+.env
+.rubocop.yml

@@ -1,0 +1,36 @@
+services:
+  # Ruby metrics collector
+  metrics-collector:
+    build:
+      context: ./metrics-collector
+      dockerfile: Dockerfile
+    container_name: github-metrics-collector
+    volumes:
+      - ./output:/app/output
+    environment:
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - GITHUB_ORG=${GITHUB_ORG}
+    command: >
+      --token ${GITHUB_TOKEN}
+      --org ${GITHUB_ORG}
+      --days ${DAYS:-30}
+      --format both
+      --output /app/output/metrics
+    profiles:
+      - collect
+
+  # Node metrics viewer
+  metrics-viewer:
+    build:
+      context: ./metrics-viewer
+      dockerfile: Dockerfile
+    container_name: github-metrics-viewer
+    ports:
+      - "4173:4173"
+    volumes:
+      - ./output:/app/public/data:ro
+    profiles:
+      - viewer
+
+volumes:
+  output:

@@ -3,6 +3,7 @@
 require 'net/http'
 require 'json'
 require 'date'
+require 'time'
 require 'uri'
 require 'set'
 
@@ -21,7 +22,7 @@ class GitHubMetricsCollector
   end
 
   def collect_metrics(days = 30)
-    since_date = (Date.today - days).iso8601
+    since_date = (Date.today - days).to_s
     print_collection_header(days)
 
     repos = fetch_target_repositories

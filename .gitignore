@@ -1,2 +1,7 @@
+# Output files
 *.json
 *.tsv
+output/
+
+# Environment
+.env
