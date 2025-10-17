@@ -1,5 +1,5 @@
 # Output files
-*.json
+# *.json
 *.tsv
 output/
 
